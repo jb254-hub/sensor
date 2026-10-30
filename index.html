@@ -1,0 +1,1546 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ExamGuard — Exam Room Entry Scanner</title>
+<style>
+  /* ============================================================
+     DESIGN TOKENS
+     ============================================================ */
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#f4f7fb;
+    --surface:#ffffff;
+    --surface-2:#f8fafc;
+    --border:#e6ecf3;
+    --border-2:#d7e0ea;
+    --text:#0f172a;
+    --text-2:#475569;
+    --muted:#94a3b8;
+    --teal:#0891b2;
+    --teal-dark:#0e7490;
+    --teal-soft:#ecfeff;
+    --green:#10b981;
+    --green-dark:#047857;
+    --green-soft:#ecfdf5;
+    --amber:#f59e0b;
+    --amber-dark:#b45309;
+    --amber-soft:#fffbeb;
+    --red:#ef4444;
+    --red-dark:#b91c1c;
+    --red-soft:#fef2f2;
+    --mono:'SF Mono',ui-monospace,'Cascadia Code',Consolas,monospace;
+    --sh-1:0 1px 2px rgba(16,24,40,.04), 0 4px 12px rgba(16,24,40,.05);
+    --sh-2:0 2px 6px rgba(16,24,40,.06), 0 14px 34px rgba(16,24,40,.09);
+    --sh-3:0 20px 60px rgba(15,23,42,.22);
+  }
+  html,body{height:100%}
+  body{
+    background:
+      radial-gradient(1100px 600px at 50% -12%, #eaf4fb 0%, transparent 62%),
+      radial-gradient(900px 520px at 100% 112%, #edfaf4 0%, transparent 58%),
+      var(--bg);
+    color:var(--text);
+    font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;
+  }
+
+  /* ============================================================
+     APP GRID
+     ============================================================ */
+  .app{
+    display:grid;
+    grid-template-columns:336px minmax(0,1fr) 356px;
+    grid-template-rows:66px minmax(0,1fr) 92px;
+    grid-template-areas:
+      "head head head"
+      "scan center right"
+      "foot foot foot";
+    gap:14px;
+    padding:14px;
+    height:100vh;
+  }
+
+  /* ============================================================
+     HEADER
+     ============================================================ */
+  header{
+    grid-area:head;
+    display:flex;align-items:center;justify-content:space-between;
+    padding:0 18px;
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:16px;
+    box-shadow:var(--sh-1);
+    position:relative;overflow:hidden;
+    gap:16px;
+  }
+  header::before{
+    content:'';position:absolute;top:0;left:0;right:0;height:3px;
+    background:linear-gradient(90deg,#22d3ee,#34d399 55%,#22d3ee);
+    opacity:.9;
+  }
+  .brand{display:flex;align-items:center;gap:13px;flex:none}
+  .brand h1{font-size:17.5px;letter-spacing:-.3px;font-weight:800;color:#0b1526;line-height:1.1}
+  .brand h1 span{
+    background:linear-gradient(90deg,#0891b2,#059669);
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+  }
+  .brand p{font-size:9.5px;color:var(--muted);letter-spacing:1.7px;
+    text-transform:uppercase;margin-top:4px;font-weight:700}
+
+  .exam-info{
+    display:flex;align-items:center;gap:18px;
+    padding:7px 18px;border-radius:12px;
+    background:var(--surface-2);border:1px solid var(--border);
+    flex:1;max-width:640px;
+  }
+  .ei-item{display:flex;flex-direction:column;gap:1px;min-width:0}
+  .ei-label{font-size:8.5px;letter-spacing:1.3px;text-transform:uppercase;
+    color:var(--muted);font-weight:800;white-space:nowrap}
+  .ei-val{font-size:11.5px;font-weight:800;color:var(--text);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ei-sep{width:1px;height:26px;background:var(--border-2);flex:none}
+
+  .head-right{display:flex;align-items:center;gap:10px;flex:none}
+  .pill{
+    display:flex;align-items:center;gap:8px;
+    font-size:10px;letter-spacing:1.2px;font-weight:800;
+    padding:7px 14px;border-radius:999px;
+    border:1px solid #b8f0dc;background:#f0fdf8;color:#0d7a5b;
+    white-space:nowrap;
+  }
+  .dot{width:7px;height:7px;border-radius:50%;background:#10b981;
+       box-shadow:0 0 0 3px rgba(16,185,129,.18);animation:pulse 1.8s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.7)}}
+
+  .head-btn{
+    cursor:pointer;font-family:inherit;font-size:11px;font-weight:800;letter-spacing:.3px;
+    padding:9px 14px;border-radius:10px;white-space:nowrap;
+    background:var(--surface);color:var(--text-2);border:1px solid var(--border-2);
+    transition:.16s;
+  }
+  .head-btn:hover{background:var(--surface-2);color:var(--text);border-color:#b8c6d6}
+  .head-btn.primary{
+    background:linear-gradient(135deg,#0891b2,#0e7490);color:#fff;border-color:#0e7490;
+    box-shadow:0 2px 10px rgba(8,145,178,.28);
+  }
+  .head-btn.primary:hover{background:linear-gradient(135deg,#0e7490,#155e75)}
+
+  .clock{
+    text-align:right;padding-left:14px;border-left:1px solid var(--border);
+    min-width:86px;cursor:pointer;
+  }
+  .clock b{display:block;font-family:var(--mono);font-size:20px;letter-spacing:.5px;
+    color:#0b1526;font-weight:700;line-height:1.1}
+  .clock small{font-size:8.5px;letter-spacing:2px;color:var(--muted);font-weight:700}
+
+  /* ============================================================
+     PANELS / CARDS
+     ============================================================ */
+  aside{display:flex;flex-direction:column;gap:14px;min-height:0;overflow:hidden}
+  .scan{grid-area:scan}
+  .right{grid-area:right}
+
+  .card{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:16px;
+    padding:14px;
+    display:flex;flex-direction:column;gap:11px;
+    min-height:0;
+    box-shadow:var(--sh-1);
+  }
+  .card.grow{flex:1;overflow:hidden}
+  .card h2{
+    font-size:9.5px;letter-spacing:1.5px;text-transform:uppercase;
+    color:var(--muted);font-weight:800;
+    display:flex;align-items:center;justify-content:space-between;gap:8px;
+  }
+  .tag{
+    font-size:8.5px;letter-spacing:.8px;font-weight:800;padding:3px 8px;border-radius:6px;
+    background:var(--teal-soft);color:var(--teal-dark);border:1px solid #cffafe;
+    white-space:nowrap;
+  }
+  .tag.green{background:var(--green-soft);color:var(--green-dark);border-color:#a7f3d0}
+  .tag.amber{background:var(--amber-soft);color:var(--amber-dark);border-color:#fde68a}
+  .tag.red{background:var(--red-soft);color:var(--red-dark);border-color:#fecaca}
+
+  /* ============================================================
+     SCANNER VIEWPORT
+     ============================================================ */
+  .scan-viewport{
+    position:relative;height:158px;border-radius:14px;
+    background:linear-gradient(135deg,#f0f9ff 0%,#ecfeff 100%);
+    border:2px dashed #bae6fd;
+    display:flex;align-items:center;justify-content:center;
+    overflow:hidden;transition:.2s;
+  }
+  .scan-viewport::before,
+  .scan-viewport::after{
+    content:'';position:absolute;width:22px;height:22px;
+    border:2.5px solid #0891b2;opacity:.7;
+  }
+  .scan-viewport::before{top:12px;left:12px;border-right:none;border-bottom:none;
+    border-top-left-radius:6px}
+  .scan-viewport::after{bottom:12px;right:12px;border-left:none;border-top:none;
+    border-bottom-right-radius:6px}
+
+  .scan-line{
+    position:absolute;left:10%;right:10%;height:2px;
+    background:linear-gradient(90deg,transparent,#0891b2,transparent);
+    box-shadow:0 0 12px #22d3ee;
+    animation:scanMove 2.2s ease-in-out infinite;
+  }
+  @keyframes scanMove{
+    0%,100%{top:20%;opacity:.4}
+    50%{top:80%;opacity:1}
+  }
+  .scan-icon{
+    display:flex;flex-direction:column;align-items:center;gap:9px;
+    color:var(--teal-dark);z-index:2;
+  }
+  .scan-icon svg{opacity:.85}
+  .scan-icon span{font-size:10px;letter-spacing:1.4px;font-weight:800;text-transform:uppercase;
+    color:#0e7490}
+
+  .scan-viewport.flash-success{
+    border-color:#6ee7b7;background:linear-gradient(135deg,#ecfdf5,#d1fae5);
+    animation:flashOK .6s ease;
+  }
+  .scan-viewport.flash-error{
+    border-color:#fca5a5;background:linear-gradient(135deg,#fef2f2,#fee2e2);
+    animation:flashErr .6s ease;
+  }
+  .scan-viewport.flash-duplicate{
+    border-color:#fcd34d;background:linear-gradient(135deg,#fffbeb,#fef3c7);
+    animation:flashOK .6s ease;
+  }
+  @keyframes flashOK{0%{transform:scale(1)}40%{transform:scale(1.015)}100%{transform:scale(1)}}
+  @keyframes flashErr{0%,100%{transform:translateX(0)}20%{transform:translateX(-5px)}
+    40%{transform:translateX(5px)}60%{transform:translateX(-3px)}80%{transform:translateX(3px)}}
+
+  /* ============================================================
+     BUTTONS / INPUTS
+     ============================================================ */
+  .btn{
+    cursor:pointer;font-family:inherit;font-size:12px;font-weight:800;
+    padding:12px 10px;border-radius:11px;
+    background:var(--surface);border:1px solid var(--border-2);color:var(--text-2);
+    transition:.16s;letter-spacing:.2px;display:flex;align-items:center;
+    justify-content:center;gap:7px;
+  }
+  .btn:hover{background:var(--surface-2);border-color:#b8c6d6;color:var(--text)}
+  .btn.primary{
+    background:linear-gradient(135deg,#0891b2,#0e7490);border-color:#0e7490;color:#fff;
+    box-shadow:0 2px 10px rgba(8,145,178,.26);font-size:12.5px;padding:13px 10px;
+  }
+  .btn.primary:hover{background:linear-gradient(135deg,#0e7490,#155e75);
+    box-shadow:0 4px 16px rgba(8,145,178,.34)}
+  .btn.primary:disabled{opacity:.45;cursor:not-allowed;box-shadow:none}
+  .btn.ghost{font-size:10.5px;padding:9px 8px;font-weight:700}
+
+  .manual-row{display:flex;gap:7px}
+  .input{
+    flex:1;font-family:var(--mono);font-size:12px;font-weight:700;
+    padding:11px 13px;border-radius:10px;
+    background:var(--surface);border:1px solid var(--border-2);color:var(--text);
+    outline:none;transition:.16s;letter-spacing:.6px;min-width:0;
+  }
+  .input::placeholder{color:#b6c2d1;font-weight:600;letter-spacing:.3px}
+  .input:focus{border-color:#67e8f9;box-shadow:0 0 0 3px rgba(8,145,178,.12)}
+  .input-btn{
+    cursor:pointer;font-family:inherit;font-size:11.5px;font-weight:800;
+    padding:0 16px;border-radius:10px;border:1px solid #0e7490;
+    background:linear-gradient(135deg,#0891b2,#0e7490);color:#fff;
+    transition:.16s;flex:none;
+  }
+  .input-btn:hover{background:linear-gradient(135deg,#0e7490,#155e75)}
+
+  /* ============================================================
+     RESULT CARD
+     ============================================================ */
+  .result{
+    border-radius:13px;padding:13px 14px;
+    border:1px solid var(--border);background:var(--surface-2);
+    display:flex;flex-direction:column;gap:9px;
+    transition:.24s;min-height:118px;
+    justify-content:center;
+  }
+  .result.idle{
+    align-items:center;text-align:center;color:var(--muted);
+    font-size:11px;font-weight:600;line-height:1.5;
+    border-style:dashed;
+  }
+  .result.success{background:var(--green-soft);border-color:#a7f3d0}
+  .result.warning{background:var(--amber-soft);border-color:#fde68a}
+  .result.duplicate{background:var(--amber-soft);border-color:#fcd34d}
+  .result.error{background:var(--red-soft);border-color:#fecaca}
+
+  .res-head{display:flex;align-items:center;gap:10px}
+  .res-icon{
+    width:38px;height:38px;border-radius:11px;flex:none;
+    display:flex;align-items:center;justify-content:center;
+    font-size:18px;font-weight:800;
+  }
+  .result.success .res-icon{background:#d1fae5;color:#047857}
+  .result.warning .res-icon{background:#fef3c7;color:#b45309}
+  .result.duplicate .res-icon{background:#fef3c7;color:#b45309}
+  .result.error .res-icon{background:#fee2e2;color:#b91c1c}
+
+  .res-title{font-size:11.5px;font-weight:800;letter-spacing:.3px;line-height:1.2}
+  .result.success .res-title{color:#065f46}
+  .result.warning .res-title{color:#92400e}
+  .result.duplicate .res-title{color:#92400e}
+  .result.error .res-title{color:#991b1b}
+
+  .res-sub{font-size:10px;font-weight:600;color:var(--text-2);margin-top:2px}
+
+  .res-body{display:flex;flex-direction:column;gap:5px;padding-top:2px}
+  .res-row{display:flex;justify-content:space-between;gap:10px;font-size:10.5px}
+  .res-row span:first-child{color:var(--text-2);font-weight:600}
+  .res-row span:last-child{font-family:var(--mono);font-weight:800;color:var(--text)}
+  .res-avatar{
+    width:44px;height:44px;border-radius:12px;flex:none;
+    display:flex;align-items:center;justify-content:center;
+    font-size:14px;font-weight:800;letter-spacing:.4px;
+    background:linear-gradient(135deg,#0891b2,#059669);color:#fff;
+    box-shadow:0 3px 10px rgba(8,145,178,.25);
+  }
+
+  /* ============================================================
+     CENTER — SEAT MAP
+     ============================================================ */
+  .center{
+    grid-area:center;display:flex;flex-direction:column;gap:14px;
+    min-height:0;overflow:hidden;
+  }
+
+  .seat-card{
+    flex:1;display:flex;flex-direction:column;gap:14px;
+    background:var(--surface);border:1px solid var(--border);
+    border-radius:16px;padding:16px;box-shadow:var(--sh-1);
+    min-height:0;overflow:hidden;
+  }
+  .seat-header{
+    display:flex;align-items:center;justify-content:space-between;gap:14px;
+    padding-bottom:12px;border-bottom:1px solid var(--border);
+  }
+  .seat-title{display:flex;flex-direction:column;gap:3px}
+  .seat-title h3{font-size:13px;font-weight:800;color:var(--text);letter-spacing:-.2px}
+  .seat-title p{font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.4px}
+
+  .seat-legend{display:flex;gap:14px;flex-wrap:wrap}
+  .lg{display:flex;align-items:center;gap:6px;font-size:9.5px;font-weight:700;
+    color:var(--text-2);letter-spacing:.4px;text-transform:uppercase}
+  .lg i{width:10px;height:10px;border-radius:3px;display:inline-block}
+  .lg i.pending{background:#f1f5f9;border:1px solid #cbd5e1}
+  .lg i.present{background:#a7f3d0;border:1px solid #6ee7b7}
+  .lg i.late{background:#fde68a;border:1px solid #fcd34d}
+  .lg i.empty{background:#ffffff;border:1px dashed #cbd5e1}
+
+  .seat-scroll{flex:1;overflow:auto;padding:4px;min-height:0}
+
+  .front-label{
+    display:flex;align-items:center;justify-content:center;gap:8px;
+    font-size:9px;letter-spacing:2.2px;font-weight:800;text-transform:uppercase;
+    color:#b6c2d1;margin-bottom:12px;
+  }
+  .front-label::before,.front-label::after{
+    content:'';flex:1;height:1px;background:linear-gradient(90deg,transparent,#e2e8f0);
+  }
+  .front-label::after{background:linear-gradient(90deg,#e2e8f0,transparent)}
+
+  .seat-grid{
+    display:grid;
+    grid-template-columns:repeat(6,1fr);
+    gap:10px;
+  }
+
+  .seat{
+    aspect-ratio:1.1;border-radius:11px;
+    background:#f8fafc;border:1.5px solid #e2e8f0;
+    display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:3px;
+    cursor:pointer;transition:.18s;position:relative;
+    user-select:none;
+  }
+  .seat:hover{transform:translateY(-2px);box-shadow:var(--sh-2);z-index:2}
+  .seat-initials{
+    font-size:12px;font-weight:800;letter-spacing:.3px;color:#94a3b8;
+    line-height:1;
+  }
+  .seat-label{
+    font-family:var(--mono);font-size:8.5px;font-weight:800;
+    color:#cbd5e1;letter-spacing:.5px;line-height:1;
+  }
+  .seat.empty{background:#ffffff;border-style:dashed;border-color:#e2e8f0}
+  .seat.empty .seat-initials{display:none}
+
+  .seat.present{background:var(--green-soft);border-color:#a7f3d0}
+  .seat.present .seat-initials{color:#047857}
+  .seat.present .seat-label{color:#10b981}
+  .seat.present::after{
+    content:'✓';position:absolute;top:4px;right:6px;
+    font-size:9px;color:#10b981;font-weight:900;
+  }
+
+  .seat.late{background:var(--amber-soft);border-color:#fde68a}
+  .seat.late .seat-initials{color:#b45309}
+  .seat.late .seat-label{color:#f59e0b}
+  .seat.late::after{
+    content:'!';position:absolute;top:3px;right:7px;
+    font-size:11px;color:#f59e0b;font-weight:900;
+  }
+
+  /* ============================================================
+     RIGHT — ROSTER + ALERTS
+     ============================================================ */
+  .filters{display:flex;gap:5px;margin-bottom:2px}
+  .filter{
+    flex:1;cursor:pointer;font-family:inherit;font-size:9.5px;font-weight:800;
+    padding:6px 2px;border-radius:7px;background:var(--surface);
+    border:1px solid var(--border);color:var(--muted);transition:.15s;
+    letter-spacing:.3px;white-space:nowrap;
+  }
+  .filter:hover{background:var(--surface-2);color:var(--text-2)}
+  .filter.active{background:var(--teal-soft);border-color:#a5f3fc;color:var(--teal-dark)}
+
+  .roster{display:flex;flex-direction:column;gap:6px;overflow-y:auto;padding-right:3px;flex:1}
+  .rrow{
+    display:flex;align-items:center;gap:9px;
+    padding:7px 9px;border-radius:9px;
+    background:var(--surface-2);border:1px solid var(--border);
+    transition:.15s;
+  }
+  .rrow:hover{background:#f1f5f9}
+  .rrow.present{background:var(--green-soft);border-color:#d1fae5}
+  .rrow.late{background:var(--amber-soft);border-color:#fef3c7}
+
+  .rr-avatar{
+    width:28px;height:28px;border-radius:8px;flex:none;
+    display:flex;align-items:center;justify-content:center;
+    font-size:10px;font-weight:800;letter-spacing:.3px;
+    background:#e2e8f0;color:#64748b;
+  }
+  .rrow.present .rr-avatar{background:#a7f3d0;color:#047857}
+  .rrow.late .rr-avatar{background:#fde68a;color:#b45309}
+
+  .rr-info{flex:1;min-width:0}
+  .rr-name{font-size:11px;font-weight:800;color:var(--text);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .rr-meta{font-size:9px;color:var(--muted);font-weight:600;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+
+  .rr-badge{
+    font-size:8px;font-weight:800;letter-spacing:.6px;
+    padding:3px 7px;border-radius:5px;white-space:nowrap;flex:none;
+    text-transform:uppercase;
+  }
+  .rr-badge.pending{background:#f1f5f9;color:#94a3b8;border:1px solid #e2e8f0}
+  .rr-badge.present{background:#d1fae5;color:#047857;border:1px solid #a7f3d0}
+  .rr-badge.late{background:#fef3c7;color:#b45309;border:1px solid #fde68a}
+
+  /* ---------- Alerts ---------- */
+  .feed{display:flex;flex-direction:column;gap:8px;overflow-y:auto;padding-right:3px;flex:1}
+  .alert{
+    border-radius:9px;padding:9px 11px;
+    border-left:3px solid var(--amber);
+    background:var(--amber-soft);
+    animation:slideIn .3s ease;
+  }
+  .alert.high{border-left-color:var(--red);background:var(--red-soft)}
+  .alert.info{border-left-color:var(--teal);background:#f0f9ff}
+  .alert.success{border-left-color:var(--green);background:var(--green-soft)}
+  @keyframes slideIn{from{opacity:0;transform:translateX(14px)}to{opacity:1;transform:none}}
+  .a-top{display:flex;justify-content:space-between;align-items:center;
+    margin-bottom:3px;gap:8px}
+  .a-time{font-family:var(--mono);font-size:9px;color:var(--muted);font-weight:700}
+  .a-badge{
+    font-size:7.5px;letter-spacing:.8px;font-weight:800;padding:2px 6px;border-radius:4px;
+    background:rgba(245,158,11,.18);color:var(--amber-dark);white-space:nowrap;
+  }
+  .alert.high .a-badge{background:rgba(239,68,68,.15);color:var(--red-dark)}
+  .alert.info .a-badge{background:rgba(8,145,178,.13);color:var(--teal-dark)}
+  .alert.success .a-badge{background:rgba(16,185,129,.15);color:var(--green-dark)}
+  .a-name{font-size:10.5px;font-weight:800;color:var(--text);margin-bottom:2px}
+  .a-msg{font-size:9.5px;line-height:1.45;color:var(--text-2)}
+
+  /* ============================================================
+     FOOTER METRICS
+     ============================================================ */
+  footer{grid-area:foot;display:grid;grid-template-columns:repeat(6,1fr);gap:12px}
+  .metric{
+    background:var(--surface);
+    border:1px solid var(--border);border-radius:14px;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+    position:relative;overflow:hidden;box-shadow:var(--sh-1);
+  }
+  .metric::after{
+    content:'';position:absolute;left:14px;right:14px;bottom:0;height:2px;
+    border-radius:2px 2px 0 0;
+    background:linear-gradient(90deg,transparent,#0891b2,transparent);opacity:.35;
+  }
+  .mv{font-family:var(--mono);font-size:20px;font-weight:800;color:var(--text);letter-spacing:-.3px}
+  .mv.g{color:var(--green-dark)} .mv.a{color:var(--amber-dark)}
+  .mv.r{color:var(--red-dark)} .mv.c{color:var(--teal-dark)}
+  .ml{font-size:9px;letter-spacing:1.1px;text-transform:uppercase;color:var(--muted);font-weight:800}
+
+  /* ============================================================
+     TOAST
+     ============================================================ */
+  #toast{
+    position:fixed;left:50%;bottom:24px;transform:translate(-50%,20px);
+    z-index:999;background:#0f172a;color:#fff;
+    padding:12px 20px;border-radius:11px;font-size:12px;font-weight:700;
+    box-shadow:var(--sh-3);opacity:0;pointer-events:none;
+    transition:.26s;max-width:90vw;text-align:center;
+  }
+  #toast.on{opacity:1;transform:translate(-50%,0)}
+  #toast.warn{background:#b45309}
+  #toast.err{background:#b91c1c}
+
+  /* ============================================================
+     CAMERA OVERLAY
+     ============================================================ */
+  #camBox{
+    position:absolute;inset:0;z-index:10;border-radius:14px;
+    background:#000;overflow:hidden;display:none;
+  }
+  #camBox.on{display:block}
+  #camVideo{width:100%;height:100%;object-fit:cover;display:block}
+  #camClose{
+    position:absolute;top:8px;right:8px;z-index:12;
+    width:30px;height:30px;border-radius:8px;border:none;
+    background:rgba(0,0,0,.6);color:#fff;font-size:16px;font-weight:700;
+    cursor:pointer;display:flex;align-items:center;justify-content:center;
+  }
+  #camClose:hover{background:rgba(0,0,0,.8)}
+  #camHint{
+    position:absolute;bottom:10px;left:10px;right:10px;z-index:12;
+    background:rgba(0,0,0,.6);color:#fff;font-size:10px;font-weight:700;
+    padding:7px 11px;border-radius:8px;text-align:center;letter-spacing:.4px;
+  }
+
+  /* ============================================================
+     SCROLLBARS
+     ============================================================ */
+  ::-webkit-scrollbar{width:6px;height:6px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#dbe3ec;border-radius:3px}
+  ::-webkit-scrollbar-thumb:hover{background:#c4d0dd}
+
+  /* ============================================================
+     RESPONSIVE
+     ============================================================ */
+  @media (max-width:1280px){
+    .app{
+      grid-template-columns:300px minmax(0,1fr) 320px;
+    }
+    .exam-info{display:none}
+  }
+  @media (max-width:1080px){
+    .app{
+      grid-template-columns:1fr;
+      grid-template-rows:auto auto auto auto auto;
+      grid-template-areas:"head" "scan" "center" "right" "foot";
+      height:auto;min-height:100vh;overflow:auto;
+    }
+    body{overflow:auto}
+    footer{grid-template-columns:repeat(3,1fr)}
+    .seat-card{min-height:520px}
+    .right{flex-direction:row;flex-wrap:wrap}
+    .right .card{flex:1 1 300px;max-height:420px}
+    .head-right .pill{display:none}
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ==================== HEADER ==================== -->
+  <header>
+    <div class="brand">
+      <svg width="36" height="36" viewBox="0 0 34 34" aria-hidden="true">
+        <defs>
+          <linearGradient id="lg" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#22d3ee"/><stop offset="1" stop-color="#34d399"/>
+          </linearGradient>
+        </defs>
+        <path d="M17 2 L30 10 L30 24 L17 32 L4 24 L4 10 Z" fill="none"
+              stroke="url(#lg)" stroke-width="1.8" opacity=".95"/>
+        <rect x="11" y="13" width="12" height="3" rx="1.5" fill="url(#lg)"/>
+        <rect x="11" y="18" width="8" height="3" rx="1.5" fill="url(#lg)" opacity=".7"/>
+      </svg>
+      <div>
+        <h1>Exam<span>Guard</span></h1>
+        <p>Exam Room Entry Scanner</p>
+      </div>
+    </div>
+
+    <div class="exam-info">
+      <div class="ei-item">
+        <span class="ei-label">Room</span>
+        <span class="ei-val">204 · Main Hall</span>
+      </div>
+      <div class="ei-sep"></div>
+      <div class="ei-item">
+        <span class="ei-label">Exam</span>
+        <span class="ei-val">CS301 — Data Structures</span>
+      </div>
+      <div class="ei-sep"></div>
+      <div class="ei-item">
+        <span class="ei-label">Date</span>
+        <span class="ei-val">12 June 2026</span>
+      </div>
+      <div class="ei-sep"></div>
+      <div class="ei-item">
+        <span class="ei-label">Starts</span>
+        <span class="ei-val">09:00</span>
+      </div>
+      <div class="ei-sep"></div>
+      <div class="ei-item">
+        <span class="ei-label">Invigilator</span>
+        <span class="ei-val">Dr. A. Mensah</span>
+      </div>
+    </div>
+
+    <div class="head-right">
+      <div class="pill"><span class="dot"></span>SESSION ACTIVE</div>
+      <button class="head-btn" id="exportBtn">⬇ Export</button>
+      <button class="head-btn primary" id="resetBtn">↻ Reset</button>
+      <div class="clock" id="clockBox" title="Click to pause / resume the session clock">
+        <b id="simTime">08:45</b>
+        <small id="clockLabel">SESSION CLOCK</small>
+      </div>
+    </div>
+  </header>
+
+  <!-- ==================== LEFT: SCANNER ==================== -->
+  <aside class="scan">
+
+    <section class="card">
+      <h2>ID Scanner <span class="tag" id="scanCountTag">0 SCANNED</span></h2>
+
+      <div class="scan-viewport" id="scanViewport">
+        <div class="scan-line"></div>
+        <div class="scan-icon">
+          <svg width="42" height="42" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+            <rect x="3" y="6" width="18" height="12" rx="2"/>
+            <circle cx="8.5" cy="11" r="1.6"/>
+            <path d="M12.5 10h5M12.5 13h3.5M6 16h2"/>
+          </svg>
+          <span>Present ID to scanner</span>
+        </div>
+
+        <div id="camBox">
+          <video id="camVideo" playsinline muted></video>
+          <button id="camClose" title="Close camera">✕</button>
+          <div id="camHint">Align the QR / barcode inside the frame</div>
+        </div>
+      </div>
+
+      <button class="btn primary" id="scanBtn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+          <path d="M4 7V4h3M20 7V4h-3M4 17v3h3M20 17v3h-3M7 12h10"/>
+        </svg>
+        Scan ID Card
+      </button>
+
+      <div class="manual-row">
+        <input class="input" id="manualInput" type="text"
+               placeholder="STU-2024-001" autocomplete="off" spellcheck="false">
+        <button class="input-btn" id="manualBtn">Verify</button>
+      </div>
+
+      <div class="manual-row">
+        <button class="btn ghost" id="cameraBtn" style="flex:1">📷 Use Camera</button>
+        <button class="btn ghost" id="invalidBtn" style="flex:1">Test Invalid ID</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Last Scan Result</h2>
+      <div class="result idle" id="resultCard">
+        Awaiting first scan…<br>Scan a card, type an ID, or use the camera.
+      </div>
+    </section>
+
+  </aside>
+
+  <!-- ==================== CENTER: SEAT MAP ==================== -->
+  <main class="center">
+    <section class="seat-card">
+      <div class="seat-header">
+        <div class="seat-title">
+          <h3>Seat Map — Room 204</h3>
+          <p>30 seats · 28 registered · click a seat for details</p>
+        </div>
+        <div class="seat-legend">
+          <span class="lg"><i class="present"></i>Present</span>
+          <span class="lg"><i class="late"></i>Late</span>
+          <span class="lg"><i class="pending"></i>Pending</span>
+          <span class="lg"><i class="empty"></i>Empty</span>
+        </div>
+      </div>
+
+      <div class="seat-scroll">
+        <div class="front-label">Front of room · invigilator desk</div>
+        <div class="seat-grid" id="seatGrid"></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ==================== RIGHT: ROSTER + ALERTS ==================== -->
+  <aside class="right">
+
+    <section class="card grow" style="flex:1.35">
+      <h2>Attendance Roster <span class="tag" id="rosterTag">28</span></h2>
+      <div class="filters">
+        <button class="filter active" data-filter="all">All</button>
+        <button class="filter" data-filter="present">Present</button>
+        <button class="filter" data-filter="late">Late</button>
+        <button class="filter" data-filter="pending">Pending</button>
+      </div>
+      <div class="roster" id="roster"></div>
+    </section>
+
+    <section class="card grow" style="flex:1">
+      <h2>Security & Entry Log <span class="tag" id="alertCount">0</span></h2>
+      <div class="feed" id="alertFeed"></div>
+    </section>
+
+  </aside>
+
+  <!-- ==================== FOOTER METRICS ==================== -->
+  <footer>
+    <div class="metric"><span class="mv" id="mReg">28</span><span class="ml">Registered</span></div>
+    <div class="metric"><span class="mv g" id="mPresent">0</span><span class="ml">Checked in</span></div>
+    <div class="metric"><span class="mv" id="mPending">28</span><span class="ml">Pending</span></div>
+    <div class="metric"><span class="mv a" id="mLate">0</span><span class="ml">Late arrivals</span></div>
+    <div class="metric"><span class="mv r" id="mFlagged">0</span><span class="ml">Flagged attempts</span></div>
+    <div class="metric"><span class="mv c" id="mRate">0%</span><span class="ml">Attendance</span></div>
+  </footer>
+
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* ================================================================
+   ExamGuard — Exam Room Entry Scanner
+   Fully client-side demo. All student data is fictional.
+   ================================================================ */
+
+/* ---------------------------------------------------------------
+   1. EXAM CONFIGURATION
+   --------------------------------------------------------------- */
+const EXAM = {
+  room: '204',
+  code: 'CS301',
+  title: 'Data Structures',
+  startMinutes: 9 * 60,        /* 09:00 */
+  lateGraceMinutes: 0          /* any scan after 09:00 is flagged late */
+};
+
+/* ---------------------------------------------------------------
+   2. STUDENT ROSTER (28 students, 30 seats)
+   --------------------------------------------------------------- */
+const NAMES = [
+  'Amara Okafor',     'Liam Chen',        'Sofia Rossi',      'Noah Williams',
+  'Yuki Tanaka',      'Fatima Al-Rashid', 'Mateo García',     'Priya Sharma',
+  'Kwame Mensah',     'Elena Petrova',    'Daniel Kim',       'Aisha Bello',
+  'Lucas Müller',     'Mei Ling Wong',    'Omar Haddad',      'Isabella Silva',
+  'Arjun Patel',      'Nadia Rahman',     'Ethan Brown',      'Chioma Eze',
+  'Hugo Martin',      'Layla Hassan',     'Rafael Costa',     'Anya Kovalenko',
+  'Jamal Wright',     'Sara Lindqvist',   'Tunde Adeyemi',    'Hana Suzuki'
+];
+
+const PROGRAMS = [
+  'Computer Science', 'Computer Science', 'Software Engineering',
+  'Data Science', 'Computer Science', 'Software Engineering'
+];
+
+/* Build seat labels A1..E6 */
+const ALL_SEATS = [];
+['A','B','C','D','E'].forEach(row => {
+  for (let c = 1; c <= 6; c++) ALL_SEATS.push(row + c);
+});
+
+/* Build student records */
+const STUDENTS = NAMES.map((name, i) => ({
+  id: 'STU-2024-' + String(i + 1).padStart(3, '0'),
+  name,
+  seat: ALL_SEATS[i],
+  program: PROGRAMS[i % PROGRAMS.length],
+  status: 'pending',        /* pending | present | late */
+  scannedAt: null,          /* "09:04" */
+  scannedAtFull: null,      /* "09:04:17" */
+  flagged: false
+}));
+
+const STUDENT_BY_ID  = Object.fromEntries(STUDENTS.map(s => [s.id, s]));
+const STUDENT_BY_SEAT = Object.fromEntries(STUDENTS.map(s => [s.seat, s]));
+
+/* ---------------------------------------------------------------
+   3. SESSION STATE
+   --------------------------------------------------------------- */
+const state = {
+  simMinutes: 8 * 60 + 45,   /* 08:45 */
+  clockRunning: true,
+  scanCount: 0,
+  flaggedCount: 0,
+  alerts: [],
+  rosterFilter: 'all',
+  lastResult: null,
+  cameraStream: null,
+  cameraDetector: null,
+  cameraRAF: null
+};
+
+/* ---------------------------------------------------------------
+   4. DOM REFERENCES
+   --------------------------------------------------------------- */
+const simTimeEl     = document.getElementById('simTime');
+const clockLabelEl  = document.getElementById('clockLabel');
+const clockBoxEl    = document.getElementById('clockBox');
+const scanViewport  = document.getElementById('scanViewport');
+const scanBtn       = document.getElementById('scanBtn');
+const manualInput   = document.getElementById('manualInput');
+const manualBtn     = document.getElementById('manualBtn');
+const invalidBtn    = document.getElementById('invalidBtn');
+const cameraBtn     = document.getElementById('cameraBtn');
+const resultCard    = document.getElementById('resultCard');
+const seatGrid      = document.getElementById('seatGrid');
+const rosterEl      = document.getElementById('roster');
+const rosterTagEl   = document.getElementById('rosterTag');
+const feedEl        = document.getElementById('alertFeed');
+const alertCountEl  = document.getElementById('alertCount');
+const scanCountTag  = document.getElementById('scanCountTag');
+const toastEl       = document.getElementById('toast');
+const camBox        = document.getElementById('camBox');
+const camVideo      = document.getElementById('camVideo');
+const camClose      = document.getElementById('camClose');
+
+/* ---------------------------------------------------------------
+   5. CLOCK
+   --------------------------------------------------------------- */
+function fmtTime(min) {
+  const h  = Math.floor(min / 60) % 24;
+  const m  = Math.floor(min % 60);
+  return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+}
+
+function nowFull() {
+  const base = fmtTime(state.simMinutes);
+  const sec  = Math.floor((state.simMinutes % 1) * 60 + Math.random() * 59);
+  return base + ':' + String(sec).padStart(2, '0');
+}
+
+function isLate() {
+  return state.simMinutes > EXAM.startMinutes + EXAM.lateGraceMinutes;
+}
+
+function renderClock() {
+  simTimeEl.textContent = fmtTime(state.simMinutes);
+  clockLabelEl.textContent = isLate() ? 'LATE ARRIVALS' : 'SESSION CLOCK';
+  clockLabelEl.style.color = isLate() ? 'var(--amber-dark)' : 'var(--muted)';
+}
+
+/* 1 sim-minute every 2 real seconds */
+setInterval(() => {
+  if (!state.clockRunning) return;
+  state.simMinutes += 1;
+  renderClock();
+  if (isLate() && fmtTime(state.simMinutes) === fmtTime(EXAM.startMinutes + 1)) {
+    pushAlert({
+      level: 'info',
+      badge: 'SESSION',
+      time: fmtTime(state.simMinutes),
+      name: 'Examination in progress',
+      msg: 'Start time reached (09:00). Further arrivals will be flagged as LATE.'
+    });
+  }
+}, 2000);
+
+clockBoxEl.addEventListener('click', () => {
+  state.clockRunning = !state.clockRunning;
+  showToast(state.clockRunning ? 'Session clock resumed' : 'Session clock paused');
+});
+
+/* ---------------------------------------------------------------
+   6. AUDIO FEEDBACK
+   --------------------------------------------------------------- */
+let audioCtx = null;
+
+function beep(freq, duration, type = 'sine', volume = 0.07) {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+
+    const osc  = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    osc.type = type;
+    osc.frequency.value = freq;
+
+    const t = audioCtx.currentTime;
+    gain.gain.setValueAtTime(volume, t);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + duration);
+
+    osc.start(t);
+    osc.stop(t + duration);
+  } catch (e) { /* audio is optional */ }
+}
+
+function soundSuccess() {
+  beep(880, 0.09, 'sine', 0.06);
+  setTimeout(() => beep(1320, 0.12, 'sine', 0.06), 90);
+}
+function soundLate() {
+  beep(660, 0.10, 'triangle', 0.06);
+  setTimeout(() => beep(880, 0.14, 'triangle', 0.06), 100);
+}
+function soundDuplicate() {
+  beep(520, 0.12, 'triangle', 0.06);
+  setTimeout(() => beep(520, 0.14, 'triangle', 0.06), 160);
+}
+function soundError() {
+  beep(200, 0.16, 'sawtooth', 0.05);
+  setTimeout(() => beep(150, 0.22, 'sawtooth', 0.05), 150);
+}
+
+/* ---------------------------------------------------------------
+   7. HELPERS
+   --------------------------------------------------------------- */
+function initials(name) {
+  return name.split(/\s+/).filter(Boolean)
+             .map(w => w[0]).slice(0, 2).join('').toUpperCase();
+}
+
+function normalizeId(raw) {
+  if (!raw) return '';
+  let s = raw.trim().toUpperCase().replace(/\s+/g, '');
+
+  /* Accept bare numbers: "001" or "1" -> STU-2024-001 */
+  if (/^\d{1,3}$/.test(s)) s = 'STU-2024-' + s.padStart(3, '0');
+
+  /* Accept "2024-001" */
+  if (/^\d{4}-\d{1,3}$/.test(s)) {
+    const parts = s.split('-');
+    s = 'STU-' + parts[0] + '-' + parts[1].padStart(3, '0');
+  }
+
+  return s;
+}
+
+function showToast(msg, kind) {
+  toastEl.textContent = msg;
+  toastEl.className = 'on' + (kind ? ' ' + kind : '');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => { toastEl.className = ''; }, 2800);
+}
+
+function flashViewport(kind) {
+  const cls = 'flash-' + kind;
+  scanViewport.classList.add(cls);
+  setTimeout(() => scanViewport.classList.remove(cls), 650);
+}
+
+/* ---------------------------------------------------------------
+   8. ALERT LOG
+   --------------------------------------------------------------- */
+function pushAlert(a) {
+  state.alerts.unshift(a);
+  if (state.alerts.length > 40) state.alerts.pop();
+
+  const div = document.createElement('div');
+  div.className = 'alert ' + a.level;
+  div.innerHTML =
+    '<div class="a-top">' +
+      '<span class="a-time">' + a.time + '</span>' +
+      '<span class="a-badge">' + a.badge + '</span>' +
+    '</div>' +
+    '<div class="a-name">' + a.name + '</div>' +
+    '<div class="a-msg">' + a.msg + '</div>';
+
+  feedEl.prepend(div);
+  while (feedEl.children.length > 40) feedEl.lastChild.remove();
+  alertCountEl.textContent = state.alerts.length;
+}
+
+/* ---------------------------------------------------------------
+   9. SCAN PROCESSING
+   --------------------------------------------------------------- */
+function processScan(rawInput) {
+  const raw = (rawInput || '').trim();
+  if (!raw) {
+    showToast('Enter or scan a student ID first', 'warn');
+    return;
+  }
+
+  const id = normalizeId(raw);
+  const student = STUDENT_BY_ID[id];
+  const stamp = fmtTime(state.simMinutes);
+  const stampFull = nowFull();
+
+  /* --- CASE 1: ID not on this exam's roster --- */
+  if (!student) {
+    state.flaggedCount++;
+    state.scanCount++;
+
+    showResult({
+      kind: 'error',
+      title: 'ID NOT RECOGNISED',
+      sub: 'Entry refused — not on this exam roster',
+      rows: [
+        ['Scanned ID', raw],
+        ['Room',       '204 · ' + EXAM.code],
+        ['Time',       stampFull]
+      ]
+    });
+
+    pushAlert({
+      level: 'high',
+      badge: 'UNAUTHORISED',
+      time: stamp,
+      name: 'Unrecognised ID presented',
+      msg: 'ID "' + raw + '" is not registered for ' + EXAM.code +
+           '. Entry denied — invigilator notified.'
+    });
+
+    flashViewport('error');
+    soundError();
+    refreshAll();
+    return;
+  }
+
+  /* --- CASE 2: Already checked in (duplicate) --- */
+  if (student.status === 'present' || student.status === 'late') {
+    state.flaggedCount++;
+    state.scanCount++;
+
+    showResult({
+      kind: 'duplicate',
+      title: 'ALREADY CHECKED IN',
+      sub: 'Possible card sharing — second entry blocked',
+      student,
+      rows: [
+        ['Student',   student.name],
+        ['Seat',      student.seat],
+        ['First scan', student.scannedAtFull],
+        ['Now',       stampFull]
+      ]
+    });
+
+    pushAlert({
+      level: 'moderate',
+      badge: 'DUPLICATE',
+      time: stamp,
+      name: student.name,
+      msg: 'Second scan attempt for seat ' + student.seat +
+           '. First entry at ' + student.scannedAtFull +
+           '. Card sharing must be verified by the invigilator.'
+    });
+
+    flashViewport('duplicate');
+    soundDuplicate();
+    refreshAll();
+    return;
+  }
+
+  /* --- CASE 3: Valid, first-time entry --- */
+  const late = isLate();
+
+  student.status        = late ? 'late' : 'present';
+  student.scannedAt     = stamp;
+  student.scannedAtFull = stampFull;
+
+  state.scanCount++;
+
+  showResult({
+    kind: late ? 'warning' : 'success',
+    title: late ? 'LATE ARRIVAL — ADMITTED' : 'VERIFIED — ADMIT',
+    sub: late
+      ? 'Arrived after 09:00 · flagged for invigilator'
+      : 'Identity confirmed · proceed to seat',
+    student,
+    rows: [
+      ['Student', student.name],
+      ['ID',      student.id],
+      ['Seat',    student.seat],
+      ['Program', student.program],
+      ['Time',    stampFull]
+    ]
+  });
+
+  pushAlert({
+    level: late ? 'moderate' : 'success',
+    badge: late ? 'LATE' : 'ADMITTED',
+    time: stamp,
+    name: student.name,
+    msg: 'Checked in to seat ' + student.seat + ' · ' + student.id +
+         (late ? ' · Arrived after exam start.' : ' · On time.')
+  });
+
+  flashViewport(late ? 'duplicate' : 'success');
+  late ? soundLate() : soundSuccess();
+
+  refreshAll();
+}
+
+/* ---------------------------------------------------------------
+   10. RENDER — RESULT CARD
+   --------------------------------------------------------------- */
+function showResult(opts) {
+  state.lastResult = opts;
+
+  const { kind, title, sub, student, rows } = opts;
+
+  const iconMap = {
+    success:   '✓',
+    warning:   '!',
+    duplicate: '!',
+    error:     '✕'
+  };
+
+  const avatarHtml = student
+    ? '<div class="res-avatar">' + initials(student.name) + '</div>'
+    : '<div class="res-icon" style="background:#fee2e2;color:#b91c1c">' +
+      iconMap[kind] + '</div>';
+
+  const rowsHtml = (rows || []).map(r =>
+    '<div class="res-row"><span>' + r[0] + '</span><span>' + r[1] + '</span></div>'
+  ).join('');
+
+  resultCard.className = 'result ' + kind;
+  resultCard.innerHTML =
+    '<div class="res-head">' +
+      avatarHtml +
+      '<div>' +
+        '<div class="res-title">' + title + '</div>' +
+        '<div class="res-sub">' + sub + '</div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="res-body">' + rowsHtml + '</div>';
+}
+
+/* ---------------------------------------------------------------
+   11. RENDER — SEAT MAP
+   --------------------------------------------------------------- */
+function renderSeats() {
+  seatGrid.innerHTML = ALL_SEATS.map(seat => {
+    const student = STUDENT_BY_SEAT[seat];
+
+    if (!student) {
+      return '<div class="seat empty" data-seat="' + seat + '" ' +
+             'title="Empty seat · ' + seat + '">' +
+               '<span class="seat-initials"></span>' +
+               '<span class="seat-label">' + seat + '</span>' +
+             '</div>';
+    }
+
+    const cls = student.status;
+    const statusText = student.status === 'present' ? 'Present'
+                     : student.status === 'late'    ? 'Late'
+                     : 'Pending';
+
+    return '<div class="seat ' + cls + '" data-seat="' + seat + '" ' +
+           'title="' + student.name + ' · ' + student.id + ' · ' +
+           student.program + ' · ' + statusText + '">' +
+             '<span class="seat-initials">' + initials(student.name) + '</span>' +
+             '<span class="seat-label">' + seat + '</span>' +
+           '</div>';
+  }).join('');
+
+  /* click a seat to show details in the result card */
+  seatGrid.querySelectorAll('.seat').forEach(el => {
+    el.addEventListener('click', () => {
+      const seat = el.dataset.seat;
+      const s = STUDENT_BY_SEAT[seat];
+
+      if (!s) {
+        showToast('Seat ' + seat + ' is not allocated to any registered student');
+        return;
+      }
+
+      showResult({
+        kind: s.status === 'present' ? 'success'
+            : s.status === 'late'    ? 'warning'
+            : 'idle',
+        title: s.status === 'present' ? 'PRESENT'
+             : s.status === 'late'    ? 'LATE ARRIVAL'
+             : 'NOT YET ARRIVED',
+        sub: 'Seat ' + s.seat + ' · ' + s.program,
+        student: s,
+        rows: [
+          ['Student', s.name],
+          ['ID',      s.id],
+          ['Program', s.program],
+          ['Checked in', s.scannedAtFull || '—']
+        ]
+      });
+    });
+  });
+}
+
+/* ---------------------------------------------------------------
+   12. RENDER — ROSTER
+   --------------------------------------------------------------- */
+function renderRoster() {
+  const f = state.rosterFilter;
+  const list = STUDENTS.filter(s => f === 'all' ? true : s.status === f);
+
+  rosterTagEl.textContent = list.length + (f === 'all' ? '' : ' / ' + STUDENTS.length);
+
+  if (!list.length) {
+    rosterEl.innerHTML =
+      '<div style="text-align:center;padding:24px 8px;color:var(--muted);' +
+      'font-size:11px;font-weight:600">No students match this filter.</div>';
+    return;
+  }
+
+  rosterEl.innerHTML = list.map(s => {
+    const badgeText = s.status === 'present' ? 'Present'
+                    : s.status === 'late'    ? 'Late'
+                    : 'Pending';
+
+    return '<div class="rrow ' + s.status + '">' +
+      '<div class="rr-avatar">' + initials(s.name) + '</div>' +
+      '<div class="rr-info">' +
+        '<div class="rr-name">' + s.name + '</div>' +
+        '<div class="rr-meta">Seat ' + s.seat + ' · ' + s.id + '</div>' +
+      '</div>' +
+      '<span class="rr-badge ' + s.status + '">' + badgeText + '</span>' +
+    '</div>';
+  }).join('');
+}
+
+/* ---------------------------------------------------------------
+   13. RENDER — METRICS
+   --------------------------------------------------------------- */
+function renderMetrics() {
+  const total   = STUDENTS.length;
+  const present = STUDENTS.filter(s => s.status === 'present').length;
+  const late    = STUDENTS.filter(s => s.status === 'late').length;
+  const pending = STUDENTS.filter(s => s.status === 'pending').length;
+  const rate    = Math.round(((present + late) / total) * 100);
+
+  document.getElementById('mReg').textContent     = total;
+  document.getElementById('mPresent').textContent = present + late;
+  document.getElementById('mPending').textContent = pending;
+  document.getElementById('mLate').textContent    = late;
+  document.getElementById('mFlagged').textContent = state.flaggedCount;
+  document.getElementById('mRate').textContent    = rate + '%';
+
+  scanCountTag.textContent = state.scanCount + ' SCANNED';
+}
+
+function refreshAll() {
+  renderSeats();
+  renderRoster();
+  renderMetrics();
+}
+
+/* ---------------------------------------------------------------
+   14. CONTROLS
+   --------------------------------------------------------------- */
+
+/* --- Scan button: pick a plausible next ID --- */
+scanBtn.addEventListener('click', () => {
+  const pending = STUDENTS.filter(s => s.status === 'pending');
+  const scanned = STUDENTS.filter(s => s.status !== 'pending');
+
+  let pick;
+
+  /* ~15% of the time, demo a duplicate scan if any already scanned */
+  if (scanned.length && Math.random() < 0.15) {
+    pick = scanned[Math.floor(Math.random() * scanned.length)];
+  } else if (pending.length) {
+    pick = pending[Math.floor(Math.random() * pending.length)];
+  } else if (scanned.length) {
+    pick = scanned[Math.floor(Math.random() * scanned.length)];
+  } else {
+    showToast('No students left to scan');
+    return;
+  }
+
+  processScan(pick.id);
+});
+
+/* --- Manual entry --- */
+manualBtn.addEventListener('click', () => {
+  processScan(manualInput.value);
+  manualInput.value = '';
+  manualInput.focus();
+});
+
+manualInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    processScan(manualInput.value);
+    manualInput.value = '';
+  }
+});
+
+/* --- Invalid ID demo --- */
+invalidBtn.addEventListener('click', () => {
+  const fake = 'STU-2024-' + String(900 + Math.floor(Math.random() * 99)).padStart(3, '0');
+  processScan(fake);
+});
+
+/* --- USB barcode scanner listener (global keystroke buffer) ---
+   Physical scanners type very fast and finish with Enter.
+   We ignore keypresses aimed at real inputs.                       */
+let keyBuffer = '';
+let lastKeyTime = 0;
+
+document.addEventListener('keydown', e => {
+  if (e.target && e.target.tagName === 'INPUT') return;
+
+  const now = Date.now();
+
+  if (now - lastKeyTime > 120) keyBuffer = '';
+  lastKeyTime = now;
+
+  if (e.key === 'Enter') {
+    if (keyBuffer.length >= 4) {
+      e.preventDefault();
+      processScan(keyBuffer);
+      keyBuffer = '';
+    }
+    return;
+  }
+
+  if (/^[a-zA-Z0-9\-]$/.test(e.key) && keyBuffer.length < 32) {
+    keyBuffer += e.key;
+  }
+});
+
+/* --- Roster filter chips --- */
+document.querySelectorAll('.filter').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filter').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.rosterFilter = btn.dataset.filter;
+    renderRoster();
+  });
+});
+
+/* --- Export CSV --- */
+document.getElementById('exportBtn').addEventListener('click', () => {
+  const header = ['Student ID', 'Name', 'Seat', 'Program', 'Status',
+                  'Checked In At', 'Flagged'];
+
+  const lines = [header.join(',')].concat(
+    STUDENTS.map(s => [
+      s.id,
+      '"' + s.name.replace(/"/g, '""') + '"',
+      s.seat,
+      s.program,
+      s.status,
+      s.scannedAtFull || '',
+      s.flagged ? 'YES' : 'NO'
+    ].join(','))
+  );
+
+  /* Append the entry log */
+  lines.push('');
+  lines.push('Entry Log');
+  lines.push(['Time', 'Level', 'Badge', 'Subject', 'Message'].join(','));
+  state.alerts.slice().reverse().forEach(a => {
+    lines.push([
+      a.time,
+      a.level,
+      a.badge,
+      '"' + String(a.name).replace(/"/g, '""') + '"',
+      '"' + String(a.msg).replace(/"/g, '""') + '"'
+    ].join(','));
+  });
+
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'examguard_room204_' + fmtTime(state.simMinutes).replace(':', '') + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  showToast('Attendance exported as CSV');
+});
+
+/* --- Reset session --- */
+document.getElementById('resetBtn').addEventListener('click', () => {
+  STUDENTS.forEach(s => {
+    s.status = 'pending';
+    s.scannedAt = null;
+    s.scannedAtFull = null;
+    s.flagged = false;
+  });
+
+  state.simMinutes   = 8 * 60 + 45;
+  state.scanCount    = 0;
+  state.flaggedCount = 0;
+  state.alerts       = [];
+  state.rosterFilter = 'all';
+
+  feedEl.innerHTML = '';
+  alertCountEl.textContent = '0';
+
+  document.querySelectorAll('.filter').forEach(b =>
+    b.classList.toggle('active', b.dataset.filter === 'all'));
+
+  resultCard.className = 'result idle';
+  resultCard.innerHTML = 'Awaiting first scan…<br>Scan a card, type an ID, or use the camera.';
+
+  manualInput.value = '';
+  renderClock();
+  refreshAll();
+
+  pushAlert({
+    level: 'info',
+    badge: 'SESSION',
+    time: fmtTime(state.simMinutes),
+    name: 'New session started',
+    msg: 'Room 204 · ' + EXAM.code + ' — ' + EXAM.title +
+         '. 28 students registered. Scanner ready.'
+  });
+
+  showToast('Session reset — ready for a new cohort');
+});
+
+/* ---------------------------------------------------------------
+   15. CAMERA SCANNING (BarcodeDetector, with graceful fallback)
+   --------------------------------------------------------------- */
+async function startCamera() {
+  if (state.cameraStream) { stopCamera(); return; }
+
+  if (!('BarcodeDetector' in window)) {
+    showToast('Camera scanning is not supported in this browser. ' +
+              'Use manual entry or a USB barcode scanner.', 'warn');
+    return;
+  }
+
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    showToast('Camera API unavailable on this device.', 'err');
+    return;
+  }
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' } },
+      audio: false
+    });
+
+    state.cameraStream = stream;
+    camVideo.srcObject = stream;
+    await camVideo.play();
+    camBox.classList.add('on');
+    cameraBtn.textContent = '✕ Stop Camera';
+
+    state.cameraDetector = new BarcodeDetector({
+      formats: ['qr_code', 'code_128', 'code_39', 'ean_13']
+    });
+
+    detectLoop();
+  } catch (err) {
+    showToast('Camera access denied or unavailable.', 'err');
+    stopCamera();
+  }
+}
+
+async function detectLoop() {
+  if (!state.cameraStream || !state.cameraDetector) return;
+
+  try {
+    const codes = await state.cameraDetector.detect(camVideo);
+    if (codes && codes.length) {
+      const value = codes[0].rawValue;
+      if (value) {
+        stopCamera();
+        processScan(value);
+        return;
+      }
+    }
+  } catch (e) { /* keep looping */ }
+
+  state.cameraRAF = requestAnimationFrame(() => {
+    /* throttle to roughly 8 fps */
+    setTimeout(detectLoop, 120);
+  });
+}
+
+function stopCamera() {
+  if (state.cameraRAF) {
+    cancelAnimationFrame(state.cameraRAF);
+    state.cameraRAF = null;
+  }
+  if (state.cameraStream) {
+    state.cameraStream.getTracks().forEach(t => t.stop());
+    state.cameraStream = null;
+  }
+  camVideo.srcObject = null;
+  camBox.classList.remove('on');
+  cameraBtn.textContent = '📷 Use Camera';
+  state.cameraDetector = null;
+}
+
+cameraBtn.addEventListener('click', startCamera);
+camClose.addEventListener('click', stopCamera);
+
+/* ---------------------------------------------------------------
+   16. BOOT
+   --------------------------------------------------------------- */
+function boot() {
+  renderClock();
+  refreshAll();
+
+  pushAlert({
+    level: 'info',
+    badge: 'SYSTEM',
+    time: fmtTime(state.simMinutes),
+    name: 'Scanner online',
+    msg: 'Room 204 · ' + EXAM.code + ' — ' + EXAM.title +
+         '. 28 students registered. Scanning enabled.'
+  });
+
+  /* Seed a few early arrivals so the map is not empty at load */
+  const seedIds = ['STU-2024-003', 'STU-2024-007', 'STU-2024-012', 'STU-2024-021'];
+  seedIds.forEach(id => {
+    const s = STUDENT_BY_ID[id];
+    if (!s) return;
+    s.status = 'present';
+    s.scannedAt = fmtTime(state.simMinutes);
+    s.scannedAtFull = fmtTime(state.simMinutes) + ':' +
+                      String(10 + Math.floor(Math.random() * 45)).padStart(2, '0');
+    state.scanCount++;
+
+    pushAlert({
+      level: 'success',
+      badge: 'ADMITTED',
+      time: s.scannedAt,
+      name: s.name,
+      msg: 'Checked in to seat ' + s.seat + ' · ' + s.id + ' · On time.'
+    });
+  });
+
+  refreshAll();
+  manualInput.focus();
+}
+
+boot();
+</script>
+</body>
+</html>
